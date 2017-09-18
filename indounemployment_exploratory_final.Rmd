@@ -1,0 +1,295 @@
+---
+title: "Data Science Fundamentals I: Unemployment in Indonesia Demo"
+author: "Matthew Jeremy and Wilson Chandra"
+date: "July 11, 2017"
+output: 
+  html_document:
+    toc: true
+    toc_float: 
+        collapsed: false
+    number_sections: true
+    theme: united
+    highlight: tango
+    #css: style.css
+---
+# Background {.tabset}
+## Objective
+Our goal is to perform exploratory data analysis and visualize unemployment rates across all provinces in Indonesia with respect to particular variables. This project aims to gain a better understanding of how these variables relate to the unemployment rate through various methods and techniques of data visualization. 
+
+## Sources
+For this particular project, we relied on the following two sources: 
+
+1. [data.go.id](https://goo.gl/Sj33FF) 
+
+2. [Badan Pusat Statistik (BPS)](https://goo.gl/9W8qTq)
+
+
+## Variables to Analyze 
+In our exploratory data analysis, we utilized and analyzed several variables in order to create the visualizations that we will come across in this presentation. These variables include: 
+
+- Amount of illiterates and non-Bahasa speakers per province ([LINK](https://goo.gl/ePifWi))
+
+- Demographics for various education levels per province ([LINK](https://goo.gl/MfKJcn))
+
+- Populations of provinces across Indonesia ([LINK](https://goo.gl/ZVqdPS))
+
+- Labor participation rate per province ([LINK](https://goo.gl/5t9btL))
+
+- Unemployment rate per province ([LINK](https://goo.gl/swYmHd))
+
+# Setup
+Before proceeding with importing our first dataset, let us begin by clearing up the global environment.
+```{r}
+# Initial configurations to clear the workspace and set to print numeric values 
+options(scipen = 9999)
+rm(list=ls())
+```
+
+Also, this next code chunk will load all of the packages we used for our project. If these are not present in your library, please install them immediately.
+```{r, message=FALSE, warning=FALSE}
+# install packages command: > install.packages("package_name")
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+library(reshape)
+library(maps)
+```
+
+
+# Literacy Rate
+```{r}
+# Proceed by importing Literacy Rate data into 'literacy' data frame
+literacy <- read.csv("literacy_data.csv")
+str(literacy)
+```
+
+From this 'literacy' dataset, we will be focusing on the population of people who cannot read (tidak_baca_tulis) or speak in Bahasa Indonesia (tidak_berbahasa_indonesia) based on different provinces (nama_provinsi) across the country during the year of 2010. 
+
+The current state of this data frame organizes the number of people based on "kabupaten," also known as subprovince, in which there are multiple of these in a single province. Since there is an inconsistent amount of subprovinces per province, we decided to clean this dataset by summing all the people within the same province to make a new data frame that looks like the following: 
+
+```{r, include=FALSE}
+no_read <- aggregate(literacy$tidak_baca_tulis, list(province = literacy$nama_provinsi), sum)
+no_speak <- aggregate(literacy$tidak_berbahasa_indonesia, list(province = literacy$nama_provinsi), sum)
+```
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+literacy_clean <- left_join(no_read, no_speak, by = "province")
+colnames(literacy_clean) <- c("province", "cant_read", "cant_speak_bahasa") # rename columns
+```
+
+```{r}
+rbind(head(literacy_clean, 2), tail(literacy_clean,2))
+```
+
+The number of people unable to read and unable to speak Bahasa Indonesia based on province is visualized below:
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+plot_lit1 <- ggplot(literacy_clean, aes(x = literacy_clean$province, y = literacy_clean$cant_read)) + geom_bar(stat = "identity") + theme(axis.text.x = element_text(angle = 90,vjust=0.4,hjust=1)) + xlab("Province") + ylab("Number of Illiterate People") + ggtitle("Province vs # of \n Illiterates in 2010")
+plot_lit2 <- ggplot(literacy_clean, aes(x = literacy_clean$province, y = literacy_clean$cant_speak_bahasa)) + geom_bar(stat = "identity") + theme(axis.text.x = element_text(angle = 90,vjust=0.4,hjust=1))  + xlab("Province") + ylab("Number of Non-Bahasa Speakers") + ggtitle("Province vs # of \n Non-Bahasa Speakers in 2010")
+```
+
+```{r}
+grid.arrange(plot_lit1, plot_lit2, ncol=2)
+```
+
+To provide a different view, this next method attempts to find the percentage of the population for each province who are illiterate and unable to speak Bahasa: 
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+sum_cant_read <- sum(literacy_clean$cant_read)
+sum_cant_speak <- sum(literacy_clean$cant_speak_bahasa)
+literacy_clean <- literacy_clean %>% mutate(percentage_noread = literacy_clean$cant_read/sum_cant_read * 100)
+literacy_clean <- literacy_clean %>% mutate(percentage_nospeak = literacy_clean$cant_speak_bahasa/sum_cant_speak * 100)
+```
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+population_2010 <- read.csv("tpt_provinsi_2010.csv") # importing 2010 population data
+population_2010 <- select(population_2010, province, population)
+data_per <- left_join(literacy_clean, population_2010, by = "province") # append population data
+data_per <- mutate(data_per, cant_read_per = cant_read * 100 / population) # calculates percentage of illiterates per province
+data_per <- mutate(data_per, cant_speak_per = cant_speak_bahasa * 100 / population) # calculates percentage of non-Bahasa speakers per province
+```
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+cols1 <- c("Number of Illiterates" = "purple", "% of Illiterates" = "yellow")
+plot_lit3 <- ggplot() +
+  geom_bar(data = data_per, aes(x = data_per$province, y = data_per$cant_read_per, fill = "% of Illiterates"), stat = "identity", alpha = 0.5) +
+  geom_line(data = literacy_clean, aes(x = literacy_clean$province, y = literacy_clean$percentage_noread, group = 1, color = "Number of Illiterates")) + 
+  scale_colour_manual(name="Per Province",values=cols1) + scale_fill_manual(name="Per Province",values=cols1) + theme(axis.text.x = element_text(angle = 90,vjust=0.4,hjust=1))  + xlab("Province") + ylab("Measure of Illiterates") + ggtitle("Number of Illiterates vs. \n % of Illiterates by Province") + ylim(0,40)
+
+cols2 <- c("Number of Non-Bahasa Speakers" = "purple", "% of Non-Bahasa Speakers" = "yellow")
+plot_lit4 <- ggplot() +
+  geom_bar(data = data_per, aes(x = data_per$province, y = data_per$cant_speak_per, fill = "% of Non-Bahasa Speakers"), stat = "identity", alpha = 0.5) +
+  geom_line(data = literacy_clean, aes(x = literacy_clean$province, y = literacy_clean$percentage_nospeak, group = 1, color = "Number of Non-Bahasa Speakers")) + 
+  scale_colour_manual(name="Per Province",values=cols2) + scale_fill_manual(name="Per Province",values=cols2) +
+  theme(axis.text.x = element_text(angle = 90,vjust=0.4,hjust=1))  + xlab("Province") + ylab("Measure of Non-Bahasa Speakers") + ggtitle("Number of Non-Bahasa Speaking People vs. \n % of Non-Bahasa Speaking People by Province") + ylim(0,40)
+```
+
+```{r}
+plot_lit3 # illiterate percentage graph
+plot_lit4 # non-Bahasa speakers percentage graph
+```
+
+# Education Levels
+
+In this next section, we will be focusing on various education level measures with respect to every province across the country in an attempt to visualize the demographic. The first step will be to load the dataset as shown below:
+```{r}
+education <- read.csv("education_demographic.csv")
+```
+
+```{r, include=FALSE}
+# counts the overall TOTAL number of students in each respective education level by adding the male and female sums together
+education <- mutate(education, total = jumlah_laki_laki + jumlah_perempuan)
+```
+
+```{r, include=FALSE}
+# 'edu' only takes into account this new 'total' with respect to every education 'level' for each province. 
+edu <- aggregate(education$total, list(province = education$nama_provinsi, level = education$tingkat_pendidikan), sum)
+colnames(edu) <- c("province", "level", "total")
+```
+
+After processing, here is a quick glance of what our education demographic data looks like: 
+```{r}
+rbind(head(edu, 3), tail(edu,3))
+```
+
+The education levels ('level') are structured in the following manner:
+
+- Tamat PT: Amount of people who graduated college
+
+- Tamat SLTA: Amount of people who graduated high school
+
+- Tamat SLTP: Amount of people who graduated junior high school
+
+- Tamat SD: Amount of people who graduated elementary school
+
+- Tidak/Belum Tamat SD: Amount of people who did or have NOT graduate elementary school
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+edu_new <- cast(edu, province ~ level)
+colnames(edu_new) <- c("province", "grad_college", "grad_elem", "grad_hs", "grad_jhs", "grad_no")
+data <- left_join(literacy_clean, edu_new, by = "province")
+```
+
+From here, we can then calculate student population percentages in each education level by province through the following calculations:
+
+Total (of all Education Levels) = Tamat PT + Tamat SLTA + Tamat SLTP + Tamat SD + Tidak/Belum Tamat SD
+
+Example: % Tamat PT = (Tamat PT) / (Total)
+```{r, include=FALSE}
+# calculate percentage of students in each education level per province among the student population
+data2 <- mutate(data, total = grad_college + grad_elem + grad_hs + grad_jhs + grad_no)
+data2 <- mutate(data2, percent_college = (grad_college * 100) / total)
+data2 <- mutate(data2, percent_elem = (grad_elem * 100) / total)
+data2 <- mutate(data2, percent_hs = (grad_hs * 100) / total)
+data2 <- mutate(data2, percent_jhs = (grad_jhs * 100) / total)
+data2 <- mutate(data2, percent_no = (grad_no * 100) / total)
+```
+
+```{r, include=FALSE}
+data_c1 <- select(data2, province, percent_college, percent_hs, percent_jhs, percent_elem, percent_no)
+colnames(data_c1) <- c("province", "college", "hs", "jhs", "elem", "none")
+data_c2 <- melt(data_c1, id = "province")
+colnames(data_c2) <- c("province", "level", "percentage")
+```
+
+This is what our data looks like with percentage data instead of total number of students by province: 
+```{r}
+rbind(head(data_c2, 3), tail(data_c2,3))
+```
+
+Now, we are able to examine how each province fares in terms of their student population and education demographic as shown in the graphs below: 
+```{r, include=FALSE}
+plot_edu <- ggplot(data_c2, aes(x = data_c2$province, y = data_c2$percentage, fill = data_c2$level)) + geom_bar(stat = "identity", position = "dodge") + theme(axis.text.x = element_text(angle = 90,vjust=0.4,hjust=1))  + xlab("Province") + ylab("Percentage of Population") + ggtitle("Education Level Percentage vs Province in 2010") + facet_grid(data_c2$level~., scales = "free") + guides(fill=guide_legend(title="Percentage of Graduates from"))
+```
+
+```{r}
+plot_edu # education demographic graph
+```
+
+# Unemployment and Labor Participation Rate
+
+In the next dataset, we will inspect unemployment rate and labor participation rate among the 33 different provinces in Indonesia during the year of 2010.
+```{r}
+# importing unemployment rate and labor participation rate data
+unemployment_2010 <- read.csv("tpt_provinsi_2010.csv")
+```
+Let us first start off with a few definitions to assist us in our understanding: 
+
+- Labor force: the amount of people who are ready to work and are also actively looking for employment
+
+- Unemployment rate: the ratio of unemployed people to the labor force
+
+- Labor force participation rate: the ratio of the labor force to the amount of people who are 15 years and above
+
+The visualization below shows both the unemployment rate and labor participation rate in a single plot to make it easier for comparison. 
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+cols <- c("LABOR PARTICIPATION RATE"="RED", "UNEMPLOYMENT RATE" = "BLACK", "MEAN UNEMPLOYMENT RATE" = "YELLOW", "MEAN PARTICIPATION RATE" = "BLACK")
+plot_unempl1 <- ggplot() +
+      # participation rate
+      geom_bar(data=unemployment_2010, aes(x = unemployment_2010$province, y = unemployment_2010$participation_rate,fill = "LABOR PARTICIPATION RATE"),stat = "identity", alpha = 1) +
+      #unemployment rate
+      geom_bar(data=unemployment_2010, aes(x = unemployment_2010$province, y = unemployment_2010$unemployment_rate, fill = "UNEMPLOYMENT RATE"),stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90,vjust=0.4,hjust=1), plot.title = element_text(hjust = 0.5))  + xlab("Province") + ylab("Rate") + scale_fill_manual(name="",values= cols) + ggtitle("Unemployment Rate vs Labor Participation Rate \n Across All Provinces in Indonesia during 2010") + geom_hline(aes(yintercept = mean(unemployment_2010$unemployment_rate), color = "MEAN UNEMPLOYMENT RATE")) + geom_hline(aes(yintercept = mean(unemployment_2010$participation_rate), color = "MEAN PARTICIPATION RATE")) + scale_color_manual(name = "", values = cols)
+```
+
+```{r}
+plot_unempl1 # unemployment rate and labor participate rate graph
+```
+
+We can perform another visualization by working with geospatial plotting. For this purpose, we used an R package called "maps" which consists of many outlines of continents, countries, states, and counties. 
+
+```{r, include = FALSE}
+world <- map_data("world")
+id <- subset(world, region == "Indonesia")
+id_map <- ggplot(data = id, mapping = aes(x = long, y = lat, group = group)) + coord_fixed(1.3) + geom_polygon(fill = "gray") + xlab("longitude") + ylab("latitude")
+id_map
+```
+
+The following represents an Indonesian map according to the R package we used: 
+```{r}
+id_map # map of Indonesia from the 'maps' package
+```
+
+```{r, include = FALSE}
+# import education data and add sum variable
+edu_map <- read.csv("education_demographic.csv") 
+edu_map <- mutate(edu_map, total = jumlah_laki_laki + jumlah_perempuan)
+
+# restructure education levels as columns
+data_edu <- select(edu_map, longitude, latitude, kode_provinsi, kode_kabkota, nama_provinsi, nama_kabkota, tingkat_pendidikan, total)
+data_edu <- cast(data_edu, nama_kabkota ~ tingkat_pendidikan) 
+colnames(data_edu) <- c("subregion", "grad_college", "grad_elem", "grad_hs", "grad_jhs", "grad_no")
+
+# extract columns that contribute to the mapping of coordinates (long, lat, subregion, etc)
+data_coord <- select(edu_map, longitude, latitude, kode_provinsi, kode_kabkota, nama_provinsi, nama_kabkota)
+colnames(data_coord) <- c("long", "lat", "group", "order", "region", "subregion")
+data_coord <- distinct(data_coord) # removes duplicate rows 
+
+# appends the education level columns to the longitude and langtitude columns 
+edu_map <- left_join(data_coord, data_edu, by = "subregion")
+
+# appends unemployment rate and labor participation rate data to finalize data frame for mapping
+unempl_map <- unemployment_2010
+colnames(unempl_map) <- c("region", "unemployment_rate", "participation_rate", "population")
+plot_mapping <- left_join(edu_map, unempl_map, by = "region")
+plot_mapping$region <- as.factor(plot_mapping$region)
+```
+
+```{r, include = FALSE}
+labor_map <- id_map + geom_point(data = plot_mapping, aes(x = long, y = lat, color = participation_rate))+scale_color_continuous(low = "purple",high="yellow") + ggtitle("Labor Participation Rate Density Across Indonesia")
+unempl_map <- id_map + geom_point(data = plot_mapping, aes(x = long, y = lat, color = unemployment_rate))+scale_color_continuous(low = "yellow",high="purple") + ggtitle("Unemployment Rate Density Across Indonesia")
+```
+
+The two plots below represent the following: 
+
+TOP: The labor participation rate with respect to provinces across Indonesia. In this case, purple represents areas with the lowest labor participation rates while yellow represents areas with the highest rates. 
+
+BOTTOM: The unemployment rate with respect to provinces across Indonesia. In this case, yellow represents areas with the lowest unemployment rates while purple represents areas with the highest rates. 
+
+```{r}
+grid.arrange(labor_map, unempl_map, nrow=2)
+```
+
+# Closing Remarks
+
+Connect with me through LinkedIn: https://www.linkedin.com/in/matthewjeremy/ 
+
